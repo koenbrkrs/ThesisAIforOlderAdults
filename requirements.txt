@@ -10,15 +10,11 @@ idna==3.14
 PyAudio==0.2.14
 pydantic==2.13.4
 pydantic_core==2.46.4
-pynput==1.8.1
-pyobjc-core==12.1
-pyobjc-framework-ApplicationServices==12.1
-pyobjc-framework-Cocoa==12.1
-pyobjc-framework-CoreText==12.1
-pyobjc-framework-Quartz==12.1
 requests==2.33.1
 six==1.17.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.7.0
 websockets==16.0
+pynput==1.8.1; sys_platform == 'darwin'
+gpiozero; sys_platform == 'linux'
