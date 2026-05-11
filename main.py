@@ -114,7 +114,7 @@ class PhoneAgentApp:
         self.btn3.when_pressed = lambda: btn_pressed(3)
         self.btn4.when_pressed = lambda: btn_pressed(4)
 
-    async def _play_dial_tone_loop(self):
+    async def _play_dial_tone_loop(self):   
         """Asynchronously plays the dial tone in a loop until cancelled."""
         audio_file = "dial_tone.wav"
         if not os.path.exists(audio_file):
