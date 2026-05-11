@@ -122,8 +122,8 @@ class PhoneAgentApp:
             while True:
                 await asyncio.sleep(1)
                 
-        # Use afplay on Mac, aplay on Linux
-        cmd = ["afplay", audio_file] if platform.system() == "Darwin" else ["aplay", "-q", audio_file]
+        # Use afplay on Mac, paplay on Linux (handles more wav formats than aplay)
+        cmd = ["afplay", audio_file] if platform.system() == "Darwin" else ["paplay", audio_file]
         
         try:
             while self.state == State.READY:
