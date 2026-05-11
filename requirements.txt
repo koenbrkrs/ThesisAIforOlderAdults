@@ -18,3 +18,4 @@ urllib3==2.7.0
 websockets==16.0
 pynput==1.8.1; sys_platform == 'darwin'
 gpiozero; sys_platform == 'linux'
+rpi-lgpio; sys_platform == 'linux'
