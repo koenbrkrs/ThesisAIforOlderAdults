@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Interface Monitor</title>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+            --user-color: #4dabf7;
+            --agent-color: #ffffff;
+            --accent-color: #3b82f6;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #status-bar {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #ef4444; /* Disconnected */
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.connected {
+            background-color: #22c55e;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+        }
+
+        #container {
+            width: 90%;
+            max-width: 1400px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .speaker {
+            font-size: 2.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            font-weight: 600;
+        }
+
+        .text {
+            font-size: 6rem;
+            line-height: 1.3;
+            font-weight: 700;
+            min-height: 8rem;
+            transition: opacity 0.3s ease;
+            text-wrap: balance;
+        }
+
+        .user-color { color: var(--user-color); }
+        .agent-color { color: var(--agent-color); }
+
+        .message-block {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        #watermark {
+            position: absolute;
+            bottom: 2rem;
+            opacity: 0.2;
+            font-size: 1.5rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="status-bar">
+        <div id="status" class="status-dot"></div>
+        <span id="connection-text">Connecting...</span>
+    </div>
+
+    <div id="container">
+        <div id="display-area">
+            <div class="speaker" id="current-speaker">System Status</div>
+            <div class="text" id="current-text">Initializing UI...</div>
+        </div>
+    </div>
+    
+    <div id="watermark">AI TANGIBLE INTERFACE</div>
+
+    <script>
+        const statusDot = document.getElementById('status');
+        const connText = document.getElementById('connection-text');
+        const speakerEl = document.getElementById('current-speaker');
+        const textEl = document.getElementById('current-text');
+        const displayArea = document.getElementById('display-area');
+
+        function connect() {
+            // Connect to the WebSocket server running on the same machine
+            const wsUrl = `ws://${window.location.hostname || 'localhost'}:8765`;
+            const ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusDot.classList.add('connected');
+                connText.innerText = 'Connected';
+                
+                // Only show this if it's currently showing initialization text
+                if (textEl.innerText === 'Initializing UI...') {
+                    speakerEl.innerText = "System Ready";
+                    textEl.innerText = "Lift handset to begin";
+                    textEl.className = "text";
+                }
+            };
+
+            ws.onclose = () => {
+                statusDot.classList.remove('connected');
+                connText.innerText = 'Reconnecting...';
+                
+                // Optionally let them know it disconnected, but maybe don't interrupt text
+                // speakerEl.innerText = "System Offline";
+                // textEl.innerText = "Connection lost. Waiting for server...";
+                
+                setTimeout(connect, 2000); // Reconnect loop
+            };
+
+            ws.onerror = (err) => {
+                ws.close();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'status') {
+                        speakerEl.innerText = "System";
+                        textEl.innerText = data.message;
+                        textEl.className = "text";
+                    } else if (data.type === 'transcript') {
+                        speakerEl.innerText = data.speaker;
+                        textEl.innerText = data.text;
+                        
+                        if (data.speaker === 'User') {
+                            textEl.className = "text user-color";
+                        } else {
+                            textEl.className = "text agent-color";
+                        }
+                    }
+                    
+                    // Trigger reflow for animation
+                    displayArea.classList.remove('message-block');
+                    void displayArea.offsetWidth; 
+                    displayArea.classList.add('message-block');
+                    
+                } catch (e) {
+                    console.error("Error parsing message", e);
+                }
+            };
+        }
+
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>

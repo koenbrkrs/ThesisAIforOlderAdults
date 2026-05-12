@@ -3,6 +3,8 @@ import asyncio
 import os
 import signal
 import subprocess
+import json
+import websockets
 from enum import Enum
 
 from elevenlabs.client import ElevenLabs
@@ -23,6 +25,9 @@ class PhoneAgentApp:
         self.dial_tone_process = None
         self.dial_tone_task = None
         self.conversation = None
+        
+        self.connected_clients = set()
+        self.loop = None
         
         # Agent map
         self.agents = {
@@ -122,9 +127,9 @@ class PhoneAgentApp:
             while True:
                 await asyncio.sleep(1)
                 
-        # Use afplay on Mac, paplay on Linux (handles more wav formats than aplay)
-        cmd = ["afplay", audio_file] if platform.system() == "Darwin" else ["paplay", audio_file]
-        
+        # Use afplay on Mac, aplay on Linux
+        cmd = ["afplay", audio_file] if platform.system() == "Darwin" else ["aplay", "-q", audio_file]
+         
         try:
             while self.state == State.READY:
                 self.dial_tone_process = await asyncio.create_subprocess_exec(
@@ -146,6 +151,29 @@ class PhoneAgentApp:
                 pass
             self.dial_tone_process = None
 
+    async def ws_handler(self, websocket):
+        self.connected_clients.add(websocket)
+        try:
+            await websocket.wait_closed()
+        except Exception:
+            pass
+        finally:
+            self.connected_clients.remove(websocket)
+
+    def broadcast_message(self, msg_dict):
+        if not self.loop or not self.connected_clients:
+            return
+        
+        async def send():
+            msg_str = json.dumps(msg_dict)
+            for client in list(self.connected_clients):
+                try:
+                    await client.send(msg_str)
+                except Exception:
+                    pass
+        
+        asyncio.run_coroutine_threadsafe(send(), self.loop)
+
     def start_conversation(self, button_num):
         agent_id = self.agents.get(button_num)
         if not agent_id:
@@ -153,16 +181,26 @@ class PhoneAgentApp:
             return
 
         print(f"Initiating ElevenLabs AI session with agent {agent_id}...")
+        
+        def on_agent_response(response):
+            print(f"Agent: {response}")
+            self.broadcast_message({"type": "transcript", "speaker": "Agent", "text": response})
+            
+        def on_user_transcript(transcript):
+            print(f"User: {transcript}")
+            self.broadcast_message({"type": "transcript", "speaker": "User", "text": transcript})
+
         self.conversation = Conversation(
             self.client,
             agent_id,
             requires_auth=self.requires_auth,
             audio_interface=DefaultAudioInterface(),
-            callback_agent_response=lambda response: print(f"Agent: {response}"),
-            callback_user_transcript=lambda transcript: print(f"User: {transcript}"),
+            callback_agent_response=on_agent_response,
+            callback_user_transcript=on_user_transcript,
         )
         self.conversation.start_session()
         print("Conversation active. Streaming bidirectionally...")
+        self.broadcast_message({"type": "status", "message": "Conversation Active - Speak Now"})
 
     def stop_conversation(self):
         if self.conversation:
@@ -171,9 +209,18 @@ class PhoneAgentApp:
             self.conversation = None
 
     async def run(self):
+        self.loop = asyncio.get_running_loop()
+        
+        try:
+            await websockets.serve(self.ws_handler, "0.0.0.0", 8765)
+            print("WebSocket server running on ws://0.0.0.0:8765")
+        except Exception as e:
+            print(f"Failed to start WebSocket server: {e}")
+
         self.setup_hardware()
         print("\n--- Phone System Online ---")
         print("Awaiting interaction. State: IDLE")
+        self.broadcast_message({"type": "status", "message": "System Online - Waiting for handset"})
 
         while True:
             # ----------------------------------------------------
@@ -189,6 +236,7 @@ class PhoneAgentApp:
                 self.state = State.IDLE
                 self.current_button = None
                 print("State -> IDLE. System is silent.")
+                self.broadcast_message({"type": "status", "message": "Phone Put Down - Idle"})
 
             # ----------------------------------------------------
             # STATE MACHINE LOGIC
@@ -199,6 +247,7 @@ class PhoneAgentApp:
                     print("\nState -> READY. Handset lifted, playing dial tone...")
                     self.state = State.READY
                     self.current_button = None  # Clear any buffer from IDLE
+                    self.broadcast_message({"type": "status", "message": "Handset Lifted - Dial an Agent..."})
                     # Spawn the dial tone playback asynchronously
                     self.dial_tone_task = asyncio.create_task(self._play_dial_tone_loop())
                 
@@ -207,6 +256,7 @@ class PhoneAgentApp:
                 if self.current_button is not None:
                     print(f"\nState -> ACTIVE. Button {self.current_button} pressed.")
                     self.state = State.ACTIVE
+                    self.broadcast_message({"type": "status", "message": f"Connecting to Agent {self.current_button}..."})
                     
                     # Stop dial tone immediately
                     if self.dial_tone_task:
