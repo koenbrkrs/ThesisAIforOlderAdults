@@ -127,8 +127,8 @@ class PhoneAgentApp:
             while True:
                 await asyncio.sleep(1)
                 
-        # Use afplay on Mac, aplay on Linux
-        cmd = ["afplay", audio_file] if platform.system() == "Darwin" else ["aplay", "-q", audio_file]
+        # Use afplay on Mac, paplay on Linux (PulseAudio handles formats better)
+        cmd = ["afplay", audio_file] if platform.system() == "Darwin" else ["paplay", audio_file]
          
         try:
             while self.state == State.READY:
@@ -185,10 +185,14 @@ class PhoneAgentApp:
         def on_agent_response(response):
             print(f"Agent: {response}")
             self.broadcast_message({"type": "transcript", "speaker": "Agent", "text": response})
+            self.broadcast_message({"type": "indicator", "color": "red", "text": "I am listening..."})
             
         def on_user_transcript(transcript):
             print(f"User: {transcript}")
             self.broadcast_message({"type": "transcript", "speaker": "User", "text": transcript})
+            
+        def on_agent_chat_response_part(text, part_type):
+            self.broadcast_message({"type": "indicator", "color": "green", "text": "Agent is speaking..."})
 
         self.conversation = Conversation(
             self.client,
@@ -197,10 +201,11 @@ class PhoneAgentApp:
             audio_interface=DefaultAudioInterface(),
             callback_agent_response=on_agent_response,
             callback_user_transcript=on_user_transcript,
+            callback_agent_chat_response_part=on_agent_chat_response_part,
         )
         self.conversation.start_session()
         print("Conversation active. Streaming bidirectionally...")
-        self.broadcast_message({"type": "status", "message": "Conversation Active - Speak Now"})
+        self.broadcast_message({"type": "indicator", "color": "red", "text": "I am listening..."})
 
     def stop_conversation(self):
         if self.conversation:

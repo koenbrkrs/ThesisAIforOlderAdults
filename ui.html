@@ -9,9 +9,8 @@
             --bg-color: #000000;
             --text-primary: #ffffff;
             --text-secondary: #a1a1aa;
-            --user-color: #4dabf7;
-            --agent-color: #ffffff;
-            --accent-color: #3b82f6;
+            --user-color: #4b5563; /* Grey */
+            --agent-color: #22c55e; /* Green */
         }
 
         body, html {
@@ -24,71 +23,77 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            align-items: center;
             overflow: hidden;
         }
 
-        #status-bar {
-            position: absolute;
-            top: 2rem;
-            left: 2rem;
+        #top-bar {
+            width: 100%;
+            padding: 1.5rem 2rem;
             display: flex;
             align-items: center;
+            justify-content: flex-start;
             gap: 1rem;
-            font-size: 1.2rem;
-            color: var(--text-secondary);
-            font-weight: 500;
+            font-size: 2rem;
+            font-weight: 600;
+            border-bottom: 1px solid #222;
+            background: #000;
+            z-index: 10;
         }
 
         .status-dot {
-            width: 16px;
-            height: 16px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
-            background-color: #ef4444; /* Disconnected */
-            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            background-color: #ef4444; /* Default Red */
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
             transition: all 0.3s ease;
         }
 
-        .status-dot.connected {
+        .status-dot.green {
             background-color: #22c55e;
-            box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.6);
         }
 
-        #container {
-            width: 90%;
-            max-width: 1400px;
-            text-align: center;
+        .status-dot.red {
+            background-color: #ef4444;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+        }
+
+        #chat-container {
+            flex: 1;
+            padding: 3rem 4rem;
             display: flex;
             flex-direction: column;
             gap: 2rem;
+            overflow-y: hidden;
+            justify-content: flex-end; /* Keep messages at the bottom */
         }
 
-        .speaker {
-            font-size: 2.5rem;
-            color: var(--text-secondary);
-            margin-bottom: 1rem;
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            font-weight: 600;
-        }
-
-        .text {
-            font-size: 6rem;
-            line-height: 1.3;
-            font-weight: 700;
-            min-height: 8rem;
-            transition: opacity 0.3s ease;
-            text-wrap: balance;
-        }
-
-        .user-color { color: var(--user-color); }
-        .agent-color { color: var(--agent-color); }
-
-        .message-block {
+        .message {
+            max-width: 80%;
+            padding: 1.5rem 2rem;
+            border-radius: 20px;
+            font-size: 26pt; /* Keep font size nice and large */
+            line-height: 1.4;
+            word-wrap: break-word;
             opacity: 0;
-            transform: translateY(30px);
-            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            transform: translateY(20px);
+            animation: fadeIn 0.4s forwards;
+            font-weight: 500;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background-color: var(--user-color);
+            color: #ffffff;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.agent {
+            align-self: flex-start;
+            background-color: var(--agent-color);
+            color: #000000;
+            border-bottom-left-radius: 5px;
         }
 
         @keyframes fadeIn {
@@ -97,102 +102,79 @@
                 transform: translateY(0);
             }
         }
-        
-        #watermark {
-            position: absolute;
-            bottom: 2rem;
-            opacity: 0.2;
-            font-size: 1.5rem;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-        }
     </style>
 </head>
 <body>
-    <div id="status-bar">
+    <div id="top-bar">
         <div id="status" class="status-dot"></div>
-        <span id="connection-text">Connecting...</span>
+        <span id="connection-text">Waiting for connection...</span>
     </div>
 
-    <div id="container">
-        <div id="display-area">
-            <div class="speaker" id="current-speaker">System Status</div>
-            <div class="text" id="current-text">Initializing UI...</div>
-        </div>
+    <div id="chat-container">
+        <!-- Messages go here -->
     </div>
-    
-    <div id="watermark">AI TANGIBLE INTERFACE</div>
 
     <script>
         const statusDot = document.getElementById('status');
         const connText = document.getElementById('connection-text');
-        const speakerEl = document.getElementById('current-speaker');
-        const textEl = document.getElementById('current-text');
-        const displayArea = document.getElementById('display-area');
+        const chatContainer = document.getElementById('chat-container');
+
+        let messageHistory = [];
+
+        function updateIndicator(color, text) {
+            statusDot.className = 'status-dot ' + color;
+            connText.innerText = text;
+        }
+
+        function addMessage(speaker, text) {
+            // Create new message
+            const msgEl = document.createElement('div');
+            msgEl.className = 'message ' + (speaker === 'User' ? 'user' : 'agent');
+            msgEl.innerText = text;
+
+            // Add to DOM
+            chatContainer.appendChild(msgEl);
+            messageHistory.push(msgEl);
+
+            // Keep only the last 6 messages total (3 user + 3 agent)
+            if (messageHistory.length > 6) {
+                const oldest = messageHistory.shift();
+                chatContainer.removeChild(oldest);
+            }
+        }
 
         function connect() {
-            // Connect to the WebSocket server running on the same machine
             const wsUrl = `ws://${window.location.hostname || 'localhost'}:8765`;
             const ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                statusDot.classList.add('connected');
-                connText.innerText = 'Connected';
-                
-                // Only show this if it's currently showing initialization text
-                if (textEl.innerText === 'Initializing UI...') {
-                    speakerEl.innerText = "System Ready";
-                    textEl.innerText = "Lift handset to begin";
-                    textEl.className = "text";
-                }
+                updateIndicator('red', 'System Ready - Lift handset to begin');
             };
 
             ws.onclose = () => {
-                statusDot.classList.remove('connected');
-                connText.innerText = 'Reconnecting...';
-                
-                // Optionally let them know it disconnected, but maybe don't interrupt text
-                // speakerEl.innerText = "System Offline";
-                // textEl.innerText = "Connection lost. Waiting for server...";
-                
-                setTimeout(connect, 2000); // Reconnect loop
+                updateIndicator('red', 'Disconnected - Reconnecting...');
+                setTimeout(connect, 2000);
             };
 
-            ws.onerror = (err) => {
-                ws.close();
-            };
+            ws.onerror = () => { ws.close(); };
 
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
                     
                     if (data.type === 'status') {
-                        speakerEl.innerText = "System";
-                        textEl.innerText = data.message;
-                        textEl.className = "text";
+                        updateIndicator('red', data.message);
+                    } else if (data.type === 'indicator') {
+                        updateIndicator(data.color, data.text);
                     } else if (data.type === 'transcript') {
-                        speakerEl.innerText = data.speaker;
-                        textEl.innerText = data.text;
-                        
-                        if (data.speaker === 'User') {
-                            textEl.className = "text user-color";
-                        } else {
-                            textEl.className = "text agent-color";
-                        }
+                        addMessage(data.speaker, data.text);
                     }
-                    
-                    // Trigger reflow for animation
-                    displayArea.classList.remove('message-block');
-                    void displayArea.offsetWidth; 
-                    displayArea.classList.add('message-block');
-                    
                 } catch (e) {
                     console.error("Error parsing message", e);
                 }
             };
         }
 
-        // Start connection
         connect();
     </script>
 </body>
