@@ -10,7 +10,12 @@
             --text-primary: #ffffff;
             --text-secondary: #a1a1aa;
             --user-color: #4b5563; /* Grey */
-            --agent-color: #22c55e; /* Green */
+            
+            /* Agent Colors */
+            --agent-1-color: #10b981; /* Green */
+            --agent-2-color: #ef4444; /* Red */
+            --agent-3-color: #3b82f6; /* Blue */
+            --agent-4-color: #ec4899; /* Pink */
         }
 
         body, html {
@@ -91,10 +96,18 @@
 
         .message.agent {
             align-self: flex-start;
-            background-color: var(--agent-color);
-            color: #000000;
+            color: #ffffff;
             border-bottom-left-radius: 5px;
         }
+
+        /* Dynamically apply agent color */
+        .message.agent-1 { background-color: var(--agent-1-color); }
+        .message.agent-2 { background-color: var(--agent-2-color); }
+        .message.agent-3 { background-color: var(--agent-3-color); }
+        .message.agent-4 { background-color: var(--agent-4-color); }
+        
+        /* Fallback if agent ID is unknown */
+        .message.agent-0 { background-color: var(--agent-1-color); }
 
         @keyframes fadeIn {
             to {
@@ -120,6 +133,7 @@
         const chatContainer = document.getElementById('chat-container');
 
         let messageHistory = [];
+        let currentAgentId = 1; // Default to 1
 
         function updateIndicator(color, text) {
             statusDot.className = 'status-dot ' + color;
@@ -129,7 +143,13 @@
         function addMessage(speaker, text) {
             // Create new message
             const msgEl = document.createElement('div');
-            msgEl.className = 'message ' + (speaker === 'User' ? 'user' : 'agent');
+            
+            if (speaker === 'User') {
+                msgEl.className = 'message user';
+            } else {
+                msgEl.className = `message agent agent-${currentAgentId}`;
+            }
+            
             msgEl.innerText = text;
 
             // Add to DOM
@@ -168,6 +188,11 @@
                         updateIndicator(data.color, data.text);
                     } else if (data.type === 'transcript') {
                         addMessage(data.speaker, data.text);
+                    } else if (data.type === 'clear_chat') {
+                        chatContainer.innerHTML = '';
+                        messageHistory = [];
+                    } else if (data.type === 'start_session') {
+                        currentAgentId = data.agent;
                     }
                 } catch (e) {
                     console.error("Error parsing message", e);

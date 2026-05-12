@@ -10,6 +10,32 @@ from enum import Enum
 from elevenlabs.client import ElevenLabs
 from elevenlabs.conversational_ai.conversation import Conversation
 from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
+import queue
+
+class CustomAudioInterface(DefaultAudioInterface):
+    def __init__(self, on_start_playing=None, on_stop_playing=None):
+        super().__init__()
+        self.on_start_playing = on_start_playing
+        self.on_stop_playing = on_stop_playing
+        self.is_playing = False
+
+    def _output_thread(self):
+        while not self.should_stop.is_set():
+            try:
+                # Get audio from queue. 0.3s timeout is enough to detect a pause in network chunks
+                audio = self.output_queue.get(timeout=0.3)
+                if not self.is_playing:
+                    self.is_playing = True
+                    if self.on_start_playing:
+                        self.on_start_playing()
+                self.out_stream.write(audio)
+            except queue.Empty:
+                if self.is_playing:
+                    self.is_playing = True # Wait, if network is slow, let's just wait longer? Actually if queue is empty, they stopped talking temporarily.
+                    # Actually, if we just set it to False, it'll flick back on when more audio comes.
+                    self.is_playing = False
+                    if self.on_stop_playing:
+                        self.on_stop_playing()
 
 class State(Enum):
     IDLE = 1
@@ -185,23 +211,29 @@ class PhoneAgentApp:
         def on_agent_response(response):
             print(f"Agent: {response}")
             self.broadcast_message({"type": "transcript", "speaker": "Agent", "text": response})
-            self.broadcast_message({"type": "indicator", "color": "red", "text": "I am listening..."})
             
         def on_user_transcript(transcript):
             print(f"User: {transcript}")
             self.broadcast_message({"type": "transcript", "speaker": "User", "text": transcript})
+
+        def on_audio_start():
+            self.broadcast_message({"type": "indicator", "color": "green", "text": "I am talking..."})
             
-        def on_agent_chat_response_part(text, part_type):
-            self.broadcast_message({"type": "indicator", "color": "green", "text": "Agent is speaking..."})
+        def on_audio_stop():
+            self.broadcast_message({"type": "indicator", "color": "red", "text": "I am listening..."})
+
+        audio_interface = CustomAudioInterface(
+            on_start_playing=on_audio_start,
+            on_stop_playing=on_audio_stop
+        )
 
         self.conversation = Conversation(
             self.client,
             agent_id,
             requires_auth=self.requires_auth,
-            audio_interface=DefaultAudioInterface(),
+            audio_interface=audio_interface,
             callback_agent_response=on_agent_response,
             callback_user_transcript=on_user_transcript,
-            callback_agent_chat_response_part=on_agent_chat_response_part,
         )
         self.conversation.start_session()
         print("Conversation active. Streaming bidirectionally...")
@@ -241,6 +273,7 @@ class PhoneAgentApp:
                 self.state = State.IDLE
                 self.current_button = None
                 print("State -> IDLE. System is silent.")
+                self.broadcast_message({"type": "clear_chat"})
                 self.broadcast_message({"type": "status", "message": "Phone Put Down - Idle"})
 
             # ----------------------------------------------------
@@ -261,6 +294,8 @@ class PhoneAgentApp:
                 if self.current_button is not None:
                     print(f"\nState -> ACTIVE. Button {self.current_button} pressed.")
                     self.state = State.ACTIVE
+                    self.broadcast_message({"type": "clear_chat"})
+                    self.broadcast_message({"type": "start_session", "agent": self.current_button})
                     self.broadcast_message({"type": "status", "message": f"Connecting to Agent {self.current_button}..."})
                     
                     # Stop dial tone immediately
